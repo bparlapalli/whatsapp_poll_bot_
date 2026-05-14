@@ -1,133 +1,123 @@
 @echo off
 setlocal EnableDelayedExpansion
 title WhatsApp Poll Bot
-
-echo.
-echo  ==============================================
-echo   WhatsApp Poll Bot - Launcher
-echo  ==============================================
-echo.
-
-:: ── Change to the folder this script lives in ──────────────────────────────
 cd /d "%~dp0"
 
-:: ── Find Python ──────────────────────────────────────────────────────────────
-:: Try 'python', then 'py' (Windows launcher), then common install locations
+set LOG=launcher_log.txt
+echo WhatsApp Poll Bot - %date% %time% > %LOG%
+echo Working dir: %CD% >> %LOG%
+
+echo.
+echo  ==============================================
+echo   WhatsApp Poll Bot
+echo  ==============================================
+echo.
+
+:: ── If venv already exists, skip all setup and just run ──────────────────────
+if exist "venv\Scripts\activate.bat" (
+    echo  Existing environment found, starting bot...
+    echo Existing venv found, skipping setup >> %LOG%
+    call "venv\Scripts\activate.bat"
+    echo Launching app.py >> %LOG%
+    python app.py
+    echo app.py exited >> %LOG%
+    echo.
+    echo  Bot stopped. Press any key to close.
+    pause >nul
+    exit /b 0
+)
+
+:: ── First-time setup ─────────────────────────────────────────────────────────
+echo  First time setup - this will take a few minutes...
+echo First time setup >> %LOG%
+
+:: Find Python
+echo Searching for Python... >> %LOG%
 set PYTHON=
 
 python --version >nul 2>&1
-if %errorlevel% equ 0 ( set PYTHON=python & goto :python_found )
+if !errorlevel! equ 0 ( set PYTHON=python & goto :have_python )
 
 py --version >nul 2>&1
-if %errorlevel% equ 0 ( set PYTHON=py & goto :python_found )
+if !errorlevel! equ 0 ( set PYTHON=py & goto :have_python )
 
-:: Search common install locations (handles "installed but not in PATH")
-:: Accepts any Python 3.8 or newer — no forced reinstall
-for %%D in (
-    "%LOCALAPPDATA%\Programs\Python\Python313"
-    "%LOCALAPPDATA%\Programs\Python\Python312"
-    "%LOCALAPPDATA%\Programs\Python\Python311"
-    "%LOCALAPPDATA%\Programs\Python\Python310"
-    "%LOCALAPPDATA%\Programs\Python\Python39"
-    "%LOCALAPPDATA%\Programs\Python\Python38"
-    "%ProgramFiles%\Python313"
-    "%ProgramFiles%\Python312"
-    "%ProgramFiles%\Python311"
-    "%ProgramFiles%\Python310"
-    "%ProgramFiles%\Python39"
-    "%ProgramFiles(x86)%\Python313"
-    "%ProgramFiles(x86)%\Python312"
-    "%ProgramFiles(x86)%\Python311"
-    "%ProgramFiles(x86)%\Python310"
-    "C:\Python313"
-    "C:\Python312"
-    "C:\Python311"
-    "C:\Python310"
-    "C:\Python39"
-    "C:\Python38"
-) do (
-    if exist "%%~D\python.exe" (
-        set PYTHON=%%~D\python.exe
-        set PATH=%%~D;%%~D\Scripts;!PATH!
-        goto :python_found
+for %%V in (313 312 311 310 39 38) do (
+    if "!PYTHON!"=="" if exist "%LOCALAPPDATA%\Programs\Python\Python%%V\python.exe" (
+        set "PYTHON=%LOCALAPPDATA%\Programs\Python\Python%%V\python.exe"
+        set "PATH=%LOCALAPPDATA%\Programs\Python\Python%%V;%LOCALAPPDATA%\Programs\Python\Python%%V\Scripts;!PATH!"
+    )
+    if "!PYTHON!"=="" if exist "%ProgramFiles%\Python%%V\python.exe" (
+        set "PYTHON=%ProgramFiles%\Python%%V\python.exe"
+    )
+    if "!PYTHON!"=="" if exist "C:\Python%%V\python.exe" (
+        set "PYTHON=C:\Python%%V\python.exe"
     )
 )
 
-:: Absolute last resort: try winget (only if nothing above found it)
-echo  [!] Python not found in any standard location.
-echo  Attempting a fresh install via winget...
-echo.
-winget install Python.Python.3.11 -e --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
+if not "!PYTHON!"=="" goto :have_python
 
-:: After winget, try py launcher (winget registers it)
+echo  Python not found. Installing via winget...
+winget install Python.Python.3.11 -e --silent --accept-package-agreements --accept-source-agreements
 py --version >nul 2>&1
-if %errorlevel% equ 0 ( set PYTHON=py & goto :python_found )
+if !errorlevel! equ 0 ( set PYTHON=py & goto :have_python )
 
+echo ERROR: Could not find or install Python >> %LOG%
 echo.
-echo  [X] Could not find or install Python automatically.
-echo.
-echo  Please install Python manually:
-echo    1. Go to https://www.python.org/downloads/
-echo    2. Click "Download Python 3.x.x"
-echo    3. Run the installer
-echo    4. IMPORTANT: on the first screen, check "Add Python to PATH"
-echo    5. Re-run this launcher
+echo  [X] Python not found. Please install it from https://python.org/downloads/
+echo      Make sure to tick "Add Python to PATH" during install.
 echo.
 pause
 exit /b 1
 
-:python_found
-for /f "tokens=*" %%i in ('"%PYTHON%" --version 2^>^&1') do echo  Python: %%i
-
-:: ── Create virtual environment if it doesn't exist ──────────────────────────
-if not exist "venv\" (
-    echo.
-    echo  Setting up virtual environment (first time only)...
-    "%PYTHON%" -m venv venv
-    if !errorlevel! neq 0 (
-        echo  [X] Failed to create virtual environment.
-        pause
-        exit /b 1
-    )
-)
-
-:: ── Activate venv ────────────────────────────────────────────────────────────
-call venv\Scripts\activate.bat
-
-:: ── Install / upgrade requirements ──────────────────────────────────────────
-echo.
-echo  Installing requirements...
-pip install -q --upgrade pip
-pip install -q -r requirements.txt
-if %errorlevel% neq 0 (
-    echo  [X] Failed to install requirements.
+:have_python
+echo Found Python: !PYTHON! >> %LOG%
+echo  Setting up virtual environment...
+"!PYTHON!" -m venv venv >> %LOG% 2>&1
+if !errorlevel! neq 0 (
+    echo ERROR: venv failed >> %LOG%
+    echo  [X] Failed to create virtual environment. Check launcher_log.txt.
     pause
     exit /b 1
 )
 
-:: ── Install Playwright browser (Chromium) ────────────────────────────────────
-echo.
-echo  Checking browser installation...
-echo  (First time: downloads Chromium ~300MB — this takes a few minutes)
-playwright install chromium
-if %errorlevel% neq 0 (
-    echo  [X] Failed to install browser.
+call "venv\Scripts\activate.bat"
+
+echo  Installing requirements (flask, playwright)...
+echo Installing requirements... >> %LOG%
+pip install -q -r requirements.txt >> %LOG% 2>&1
+if !errorlevel! neq 0 (
+    echo ERROR: pip install failed >> %LOG%
+    echo  [X] Failed to install requirements. Check launcher_log.txt.
     pause
     exit /b 1
 )
 
-:: ── Launch the app ───────────────────────────────────────────────────────────
+echo  Installing browser (Chromium, ~300MB)...
+echo Installing playwright chromium... >> %LOG%
+playwright install chromium >> %LOG% 2>&1
+if !errorlevel! neq 0 (
+    echo ERROR: playwright install failed >> %LOG%
+    echo  [X] Failed to install browser. Check launcher_log.txt.
+    pause
+    exit /b 1
+)
+
+echo Setup complete >> %LOG%
+echo.
+echo  Setup complete!
+
+:: ── Launch ───────────────────────────────────────────────────────────────────
 echo.
 echo  ==============================================
 echo   Starting WhatsApp Poll Bot...
-echo   Your browser will open automatically.
+echo   Your browser opens at http://localhost:5050
 echo   Keep this window open while the bot runs.
 echo   Press Ctrl+C or close this window to stop.
 echo  ==============================================
 echo.
-
+echo Launching app.py >> %LOG%
 python app.py
-:: (venv is active at this point so 'python' always resolves correctly)
+echo app.py exited >> %LOG%
 
 echo.
 echo  Bot stopped. Press any key to close.
