@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WhatsApp Poll Bot</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green:   #22c55e;
+      --red:     #ef4444;
+      --amber:   #f59e0b;
+      --blue:    #3b82f6;
+      --bg:      #0f172a;
+      --surface: #1e293b;
+      --border:  #334155;
+      --text:    #f1f5f9;
+      --muted:   #94a3b8;
+      --radius:  10px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px 16px;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .header h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .header h1 span { margin-right: 6px; }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: 999px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      transition: all 0.3s;
+    }
+    .status-badge .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background 0.3s;
+    }
+    .status-badge.running .dot  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .status-badge.running       { border-color: var(--green); color: var(--green); }
+    .status-badge.stopped .dot  { background: var(--muted); }
+    .status-badge.stopped       { color: var(--muted); }
+
+    /* ── Layout ── */
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .card h2 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    /* ── Form elements ── */
+    label {
+      display: block;
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-bottom: 5px;
+      margin-top: 12px;
+    }
+    label:first-of-type { margin-top: 0; }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 9px 12px;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus, select:focus { border-color: var(--blue); }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 18px;
+      border: none;
+      border-radius: 7px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      text-decoration: none;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    .btn-primary  { background: var(--blue);  color: #fff; }
+    .btn-success  { background: var(--green); color: #fff; }
+    .btn-danger   { background: var(--red);   color: #fff; }
+    .btn-warning  { background: var(--amber); color: #000; }
+    .btn-ghost    { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-sm       { padding: 7px 13px; font-size: 0.8rem; }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    /* ── Session info ── */
+    .session-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 7px;
+      font-size: 0.85rem;
+      margin-bottom: 14px;
+    }
+    .session-info.ok     { background: rgba(34,197,94,0.1);  border: 1px solid rgba(34,197,94,0.3); color: var(--green); }
+    .session-info.needed { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); color: var(--amber); }
+
+    /* ── QR notice ── */
+    #qr-notice {
+      display: none;
+      padding: 14px 16px;
+      background: rgba(245,158,11,0.12);
+      border: 1px solid rgba(245,158,11,0.4);
+      border-radius: var(--radius);
+      font-size: 0.88rem;
+      color: var(--amber);
+      margin-bottom: 16px;
+      line-height: 1.6;
+    }
+    #qr-notice strong { display: block; margin-bottom: 4px; font-size: 0.95rem; }
+
+    /* ── Log box ── */
+    .log-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+    }
+    .log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .log-header h2 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    #log-box {
+      background: #0a0f1a;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      height: 320px;
+      overflow-y: auto;
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      font-size: 0.78rem;
+      line-height: 1.55;
+      color: #a8d8a8;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    #log-box .log-err  { color: #f87171; }
+    #log-box .log-warn { color: #fbbf24; }
+    #log-box .log-info { color: #a8d8a8; }
+    #log-box .log-dim  { color: #475569; }
+
+    .log-empty {
+      color: var(--muted);
+      font-style: italic;
+    }
+
+    /* ── Save feedback ── */
+    #save-msg {
+      display: none;
+      font-size: 0.8rem;
+      color: var(--green);
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1><span>🏏</span> WhatsApp Poll Bot</h1>
+  <div class="status-badge {{ 'running' if is_running else 'stopped' }}" id="status-badge">
+    <div class="dot"></div>
+    <span id="status-text">{{ 'Running' if is_running else 'Stopped' }}</span>
+  </div>
+</div>
+
+<!-- QR notice (shown when bot starts without a session) -->
+<div id="qr-notice">
+  <strong>📱 Action required — scan the QR code</strong>
+  A browser window just opened with WhatsApp Web. Open WhatsApp on your phone,
+  go to <strong>Settings → Linked Devices → Link a Device</strong>, and scan the QR code.
+  The bot will continue automatically once you're logged in.
+</div>
+
+<!-- Two-column grid: Settings + Controls -->
+<div class="grid">
+
+  <!-- Settings card -->
+  <div class="card">
+    <h2>Settings</h2>
+    <form method="POST" action="/save-config" id="settings-form">
+
+      <label for="group_name">WhatsApp Group Name</label>
+      <input
+        type="text"
+        id="group_name"
+        name="group_name"
+        placeholder="e.g. Cricket Saturday Squad"
+        value="{{ config.TARGET_GROUP }}"
+        required
+      />
+
+      <label for="interval">Check for polls every (seconds)</label>
+      <input
+        type="number"
+        id="interval"
+        name="interval"
+        min="10"
+        max="3600"
+        value="{{ config.POLL_CHECK_INTERVAL }}"
+      />
+
+      <label for="vote_option">Vote for which option?</label>
+      <select id="vote_option" name="vote_option">
+        <option value="0" {{ 'selected' if config.VOTE_OPTION_INDEX == 0 }}>1st option (usually "Yes / I'm in")</option>
+        <option value="1" {{ 'selected' if config.VOTE_OPTION_INDEX == 1 }}>2nd option</option>
+        <option value="2" {{ 'selected' if config.VOTE_OPTION_INDEX == 2 }}>3rd option</option>
+      </select>
+
+      <div class="btn-row">
+        <button type="submit" class="btn btn-primary">💾 Save Settings</button>
+      </div>
+      <div id="save-msg">✓ Settings saved</div>
+    </form>
+  </div>
+
+  <!-- Controls card -->
+  <div class="card">
+    <h2>Bot Controls</h2>
+
+    <!-- Session status -->
+    {% if has_session %}
+    <div class="session-info ok">
+      ✅ WhatsApp session saved — no QR scan needed
+    </div>
+    {% else %}
+    <div class="session-info needed">
+      📱 No session yet — you'll scan a QR code on first start
+    </div>
+    {% endif %}
+
+    <div class="btn-row">
+      <button
+        class="btn btn-success"
+        id="btn-start"
+        onclick="startBot()"
+        {{ 'disabled' if is_running }}
+      >▶ Start Bot</button>
+
+      <button
+        class="btn btn-danger"
+        id="btn-stop"
+        onclick="stopBot()"
+        {{ 'disabled' if not is_running }}
+      >■ Stop Bot</button>
+    </div>
+
+    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border);">
+      <p style="font-size:0.8rem; color:var(--muted); margin-bottom:10px;">
+        Need to log into a different WhatsApp account?
+      </p>
+      <button
+        class="btn btn-ghost btn-sm"
+        id="btn-rescan"
+        onclick="clearSession()"
+        {{ 'disabled' if is_running }}
+      >🔄 Re-scan QR Code</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Log output -->
+<div class="log-card">
+  <div class="log-header">
+    <h2>Live Log</h2>
+    <button class="btn btn-ghost btn-sm" onclick="clearLog()">Clear</button>
+  </div>
+  <div id="log-box"><span class="log-empty">— waiting for bot to start —</span></div>
+</div>
+
+
+<script>
+  /* ── State ────────────────────────────────────────────────────────────── */
+  let evtSource = null;
+  let isRunning  = {{ 'true' if is_running else 'false' }};
+
+  /* ── Log helpers ──────────────────────────────────────────────────────── */
+  const logBox = document.getElementById('log-box');
+
+  function clearLog() {
+    logBox.innerHTML = '<span class="log-empty">— log cleared —</span>';
+  }
+
+  function appendLog(text) {
+    // Remove placeholder on first real line
+    const empty = logBox.querySelector('.log-empty');
+    if (empty) empty.remove();
+
+    const line = document.createElement('div');
+    const lower = text.toLowerCase();
+    if (lower.includes('error') || lower.includes('abort'))      line.className = 'log-err';
+    else if (lower.includes('warn'))                              line.className = 'log-warn';
+    else if (lower.includes('info'))                              line.className = 'log-info';
+    else                                                          line.className = 'log-dim';
+    line.textContent = text;
+    logBox.appendChild(line);
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+
+  /* ── SSE stream ───────────────────────────────────────────────────────── */
+  function startStream() {
+    if (evtSource) { evtSource.close(); evtSource = null; }
+    evtSource = new EventSource('/logs');
+    evtSource.onmessage = (e) => {
+      if (e.data === '__HEARTBEAT__') return;
+      if (e.data === '__STOPPED__') {
+        setRunning(false);
+        evtSource.close();
+        evtSource = null;
+        appendLog('── Bot stopped ──');
+        return;
+      }
+      appendLog(e.data);
+    };
+    evtSource.onerror = () => {
+      // Silently retry — SSE auto-reconnects
+    };
+  }
+
+  /* ── UI state ─────────────────────────────────────────────────────────── */
+  function setRunning(running) {
+    isRunning = running;
+    document.getElementById('btn-start').disabled  =  running;
+    document.getElementById('btn-stop').disabled   = !running;
+    document.getElementById('btn-rescan').disabled =  running;
+
+    const badge = document.getElementById('status-badge');
+    badge.className = 'status-badge ' + (running ? 'running' : 'stopped');
+    document.getElementById('status-text').textContent = running ? 'Running' : 'Stopped';
+  }
+
+  /* ── Actions ──────────────────────────────────────────────────────────── */
+  function startBot() {
+    fetch('/start', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.status === 'error') {
+          alert('Error: ' + data.message);
+          return;
+        }
+        setRunning(true);
+        startStream();
+
+        if (data.needs_qr) {
+          document.getElementById('qr-notice').style.display = 'block';
+        } else {
+          document.getElementById('qr-notice').style.display = 'none';
+        }
+      });
+  }
+
+  function stopBot() {
+    fetch('/stop', { method: 'POST' })
+      .then(r => r.json())
+      .then(() => {
+        setRunning(false);
+        document.getElementById('qr-notice').style.display = 'none';
+      });
+  }
+
+  function clearSession() {
+    if (!confirm('This will delete your saved WhatsApp login. You will need to scan the QR code again next time. Continue?')) return;
+    fetch('/clear-session', { method: 'POST' })
+      .then(r => r.json())
+      .then(data => {
+        if (data.status === 'error') { alert(data.message); return; }
+        // Refresh page to update session status banner
+        location.reload();
+      });
+  }
+
+  /* ── Init ─────────────────────────────────────────────────────────────── */
+  // If bot is already running when page loads, connect to stream immediately
+  if (isRunning) startStream();
+
+  // Periodically poll /status to stay in sync (handles external stops)
+  setInterval(() => {
+    fetch('/status').then(r => r.json()).then(data => {
+      if (isRunning !== data.running) setRunning(data.running);
+    }).catch(() => {});
+  }, 5000);
+</script>
+
+</body>
+</html>
