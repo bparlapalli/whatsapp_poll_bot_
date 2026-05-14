@@ -11,43 +11,79 @@ echo.
 :: ── Change to the folder this script lives in ──────────────────────────────
 cd /d "%~dp0"
 
-:: ── Check Python ────────────────────────────────────────────────────────────
+:: ── Find Python ──────────────────────────────────────────────────────────────
+:: Try 'python', then 'py' (Windows launcher), then common install locations
+set PYTHON=
+
 python --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo  [!] Python not found on this computer.
-    echo.
-    echo  Attempting to install Python automatically via winget...
-    echo  (This requires Windows 10/11 and may take a few minutes)
-    echo.
-    winget install Python.Python.3.11 -e --silent --accept-package-agreements --accept-source-agreements
-    if !errorlevel! neq 0 (
-        echo.
-        echo  [X] Automatic install failed.
-        echo.
-        echo  Please install Python manually:
-        echo    1. Go to https://www.python.org/downloads/
-        echo    2. Download and run the installer
-        echo    3. IMPORTANT: check "Add Python to PATH" during install
-        echo    4. Re-run this launcher
-        echo.
-        pause
-        exit /b 1
+if %errorlevel% equ 0 ( set PYTHON=python & goto :python_found )
+
+py --version >nul 2>&1
+if %errorlevel% equ 0 ( set PYTHON=py & goto :python_found )
+
+:: Search common install locations (handles "installed but not in PATH")
+:: Accepts any Python 3.8 or newer — no forced reinstall
+for %%D in (
+    "%LOCALAPPDATA%\Programs\Python\Python313"
+    "%LOCALAPPDATA%\Programs\Python\Python312"
+    "%LOCALAPPDATA%\Programs\Python\Python311"
+    "%LOCALAPPDATA%\Programs\Python\Python310"
+    "%LOCALAPPDATA%\Programs\Python\Python39"
+    "%LOCALAPPDATA%\Programs\Python\Python38"
+    "%ProgramFiles%\Python313"
+    "%ProgramFiles%\Python312"
+    "%ProgramFiles%\Python311"
+    "%ProgramFiles%\Python310"
+    "%ProgramFiles%\Python39"
+    "%ProgramFiles(x86)%\Python313"
+    "%ProgramFiles(x86)%\Python312"
+    "%ProgramFiles(x86)%\Python311"
+    "%ProgramFiles(x86)%\Python310"
+    "C:\Python313"
+    "C:\Python312"
+    "C:\Python311"
+    "C:\Python310"
+    "C:\Python39"
+    "C:\Python38"
+) do (
+    if exist "%%~D\python.exe" (
+        set PYTHON=%%~D\python.exe
+        set PATH=%%~D;%%~D\Scripts;!PATH!
+        goto :python_found
     )
-    echo.
-    echo  Python installed. Please CLOSE and RE-RUN this launcher
-    echo  so the new PATH settings take effect.
-    echo.
-    pause
-    exit /b 0
 )
 
-for /f "tokens=*" %%i in ('python --version 2^>^&1') do echo  Python: %%i
+:: Absolute last resort: try winget (only if nothing above found it)
+echo  [!] Python not found in any standard location.
+echo  Attempting a fresh install via winget...
+echo.
+winget install Python.Python.3.11 -e --silent --accept-package-agreements --accept-source-agreements >nul 2>&1
+
+:: After winget, try py launcher (winget registers it)
+py --version >nul 2>&1
+if %errorlevel% equ 0 ( set PYTHON=py & goto :python_found )
+
+echo.
+echo  [X] Could not find or install Python automatically.
+echo.
+echo  Please install Python manually:
+echo    1. Go to https://www.python.org/downloads/
+echo    2. Click "Download Python 3.x.x"
+echo    3. Run the installer
+echo    4. IMPORTANT: on the first screen, check "Add Python to PATH"
+echo    5. Re-run this launcher
+echo.
+pause
+exit /b 1
+
+:python_found
+for /f "tokens=*" %%i in ('"%PYTHON%" --version 2^>^&1') do echo  Python: %%i
 
 :: ── Create virtual environment if it doesn't exist ──────────────────────────
 if not exist "venv\" (
     echo.
     echo  Setting up virtual environment (first time only)...
-    python -m venv venv
+    "%PYTHON%" -m venv venv
     if !errorlevel! neq 0 (
         echo  [X] Failed to create virtual environment.
         pause
@@ -91,6 +127,7 @@ echo  ==============================================
 echo.
 
 python app.py
+:: (venv is active at this point so 'python' always resolves correctly)
 
 echo.
 echo  Bot stopped. Press any key to close.
